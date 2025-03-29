@@ -20,6 +20,7 @@ from threading import Thread, Event
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import concurrent.futures
+import argparse
 
 # 配置日志记录
 logging.basicConfig(
@@ -739,15 +740,43 @@ class AsyncPipelineProcessor:
         return f"{self._format_size(bytes_per_second)}/s"
 
 if __name__ == "__main__":
-    # 直接指定配置参数
+    # 创建命令行参数解析器
+    parser = argparse.ArgumentParser(description='异步数据处理流水线')
+    parser.add_argument('--page', type=int, required=True, help='页码，例如：3')
+    parser.add_argument('--batch', type=int, required=True, help='批次号，例如：2')
+    parser.add_argument('--tar-batch-size', type=int, default=2, help='同时处理的tar文件数量（默认：2）')
+    parser.add_argument('--check-interval', type=int, default=5, help='检查新文件的间隔，单位秒（默认：5）')
+    parser.add_argument('--parquet-batch-size', type=int, default=20, help='每个parquet文件包含的记录数（默认：20）')
+    parser.add_argument('--token', type=str, help='HuggingFace token，如果不提供则从环境变量HF_TOKEN获取')
+    
+    # 解析命令行参数
+    args = parser.parse_args()
+    
+    # 构建仓库ID
+    repo_id = f'CLAPv2/a_t5_page{args.page}_batch{args.batch}'
+    
+    # 获取token
+    hf_token = args.token or os.environ.get('HF_TOKEN')
+    if not hf_token:
+        parser.error("必须提供 --token 参数或设置 HF_TOKEN 环境变量")
+    
+    # 配置参数
     config = {
-        'repo_id': 'CLAPv2/a_t5_page3_batch2',  # 替换为你的仓库ID
-        'hf_token': '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',  # 替换为你的HuggingFace token
-        'tar_batch_size': 2,  # 同时处理的tar文件数量
-        'check_interval': 5,  # 检查新文件的间隔（秒）
-        'parquet_batch_size': 20  # 每个parquet文件包含的记录数
+        'repo_id': repo_id,
+        'hf_token': hf_token,
+        'tar_batch_size': args.tar_batch_size,
+        'check_interval': args.check_interval,
+        'parquet_batch_size': args.parquet_batch_size
     }
     
+    # 打印配置信息
+    logger.info(f"启动配置:")
+    logger.info(f"仓库ID: {config['repo_id']}")
+    logger.info(f"tar批次大小: {config['tar_batch_size']}")
+    logger.info(f"检查间隔: {config['check_interval']}秒")
+    logger.info(f"parquet批次大小: {config['parquet_batch_size']}")
+    
+    # 创建处理器实例
     processor = AsyncPipelineProcessor(
         tar_batch_size=config['tar_batch_size'],
         check_interval=config['check_interval'],
@@ -761,4 +790,5 @@ if __name__ == "__main__":
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
+        logger.info("接收到停止信号，正在关闭...")
         processor.stop() 
